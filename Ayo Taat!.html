@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ayo Taat!</title>
+<style>
+:root{--bg:#f2f2f5;--fg:#1a1a24;--muted:#666;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e0e16;--fg:#e8e8f0;--muted:#9a9ab0}}
+:root[data-theme="dark"]{--bg:#0e0e16;--fg:#e8e8f0;--muted:#9a9ab0}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+#wrap{position:relative;width:min(96vw,640px);aspect-ratio:480/360;container-type:inline-size}
+#mute{position:absolute;right:1.5cqw;bottom:1.5cqw;z-index:5;width:7cqw;height:7cqw;min-width:30px;min-height:30px;border-radius:50%;border:2px solid #4a4a70;background:#2b2b44;color:#e8e8f0;font-size:max(14px,3.6cqw);line-height:1;padding:0;opacity:.75;cursor:pointer;-webkit-tap-highlight-color:transparent}
+canvas{display:block;width:100%;height:100%;box-sizing:border-box;background:#05050f;border:2px solid #3a3a5c;border-radius:6px;image-rendering:pixelated;touch-action:none}
+#quiz{position:absolute;inset:0;background:rgba(5,5,15,.95);color:#e8e8f0;border-radius:6px;padding:3cqw 4cqw;box-sizing:border-box;overflow:auto;font:3.1cqw/1.35 system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;gap:1.6cqw}
+#quiz[hidden]{display:none}
+#quiz h3{margin:0;font-size:2.4cqw;letter-spacing:.12em;color:#ffd54f}
+#quiz .q{font-weight:600;font-size:3.5cqw}
+#quiz button{display:flex;gap:2cqw;text-align:left;background:#23233a;color:#e8e8f0;border:2px solid #4a4a70;border-radius:2cqw;padding:1.4cqw 2cqw;font:inherit;cursor:pointer}
+#quiz button b{color:#4fc3f7}
+#quiz button:hover{border-color:#4fc3f7}
+#quiz .res{font-weight:700;font-size:4.2cqw}
+#quiz .ok{color:#81c784}
+#quiz .no{color:#ef5350}
+#quiz .ex{background:#1a1a2e;border-radius:2cqw;padding:2cqw}
+#quiz button.go{align-self:center;justify-content:center;background:#4fc3f7;color:#05050f;font-weight:700;padding:1.6cqw 6cqw;border-color:#4fc3f7}
+p{margin:0;font-size:13px;color:var(--muted);text-align:center}
+#pad{display:none;width:min(96vw,640px);justify-content:space-between;align-items:center;box-sizing:border-box;padding:0 6px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
+#pad button{background:#2b2b44;color:#e8e8f0;border:2px solid #4a4a70;border-radius:12px;font:bold 18px monospace;touch-action:none;-webkit-tap-highlight-color:transparent;padding:0}
+#pad button.on{background:#4fc3f7;color:#05050f;border-color:#4fc3f7}
+.dp{display:grid;grid-template-columns:repeat(3,58px);grid-template-rows:repeat(3,58px);gap:4px}
+.dp .u{grid-area:1/2}.dp .l{grid-area:2/1}.dp .r{grid-area:2/3}.dp .d{grid-area:3/2}
+.act{display:flex;flex-direction:column;align-items:flex-end;gap:14px}
+.act .mn{width:80px;height:36px;font-size:13px}
+.act .fire{width:100px;height:100px;border-radius:50%;font-size:16px;background:#7a2b3a;border-color:#ef5350}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c" width="480" height="360"></canvas><div id="quiz" hidden></div><button id="mute" aria-label="Suara">🔊</button></div>
+<div id="pad">
+<div class="dp"><button data-k="ArrowUp" class="u">▲</button><button data-k="ArrowLeft" class="l">◀</button><button data-k="ArrowRight" class="r">▶</button><button data-k="ArrowDown" class="d">▼</button></div>
+<div class="act"><button data-k="menu" class="mn">MENU</button><button data-k="Space" class="fire">TEMBAK</button></div>
+</div>
+<p id="hint">Panah / WASD = gerak · Spasi = tembak · Esc = menu · Enter = main lagi</p>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360;
+const keys={};
+addEventListener('keydown',e=>{keys[e.code]=true;if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();if(scene==='menu'){menuKey(e.code);return;}if(scene==='quiz'&&e.code!=='Escape'){if(!e.repeat)quizKey(e.code);return;}if(e.code==='Enter'&&over)reset();if(e.code==='Escape'){hideQuiz();hi=Math.max(hi,score);scene='menu';}});
+addEventListener('keyup',e=>keys[e.code]=false);
+let touch=null;let scene='menu',sel=0,help=false,it=0;
+const mobile=matchMedia('(pointer:coarse)').matches||('ontouchstart' in window);
+if(mobile){
+  document.getElementById('pad').style.display='flex';
+  document.getElementById('hint').textContent='Pakai tombol di layar · ketuk layar game di menu / Game Over';
+}
+document.querySelectorAll('#pad button').forEach(b=>{
+  const k=b.dataset.k;
+  const on=e=>{e.preventDefault();b.classList.add('on');if(k==='menu'){hideQuiz();hi=Math.max(hi,score);scene='menu';}else keys[k]=true;};
+  const off=e=>{e.preventDefault();b.classList.remove('on');if(k!=='menu')keys[k]=false;};
+  b.addEventListener('pointerdown',e=>{if(b.hasPointerCapture&&b.hasPointerCapture(e.pointerId))b.releasePointerCapture(e.pointerId);on(e);});
+  b.addEventListener('pointerenter',e=>{if(e.buttons&&k!=='menu')on(e);});
+  ['pointerup','pointercancel','pointerleave'].forEach(n=>b.addEventListener(n,off));
+  b.addEventListener('contextmenu',e=>e.preventDefault());
+});
+
+const QUIZ=[{q:'Mengapa warga negara perlu menaati aturan yang berlaku dalam kehidupan bermasyarakat?',o:[
+{t:'Agar seseorang selalu mendapatkan keuntungan pribadi',e:'Belum tepat.',x:'Tujuan aturan bukan menjamin keuntungan pribadi setiap orang, melainkan mengatur kehidupan bersama secara adil dan tertib.'},
+{t:'Agar semua orang memiliki pendapat yang sama',e:'Belum tepat.',x:'Aturan tidak mengharuskan semua orang memiliki pendapat yang sama. Perbedaan pendapat tetap dapat disampaikan secara bertanggung jawab.'},
+{t:'Agar kehidupan bersama tertib dan hak orang lain dihormati',ok:true,e:'Benar!',x:'Aturan membantu menciptakan ketertiban, melindungi hak orang lain, dan mengurangi konflik. Menaati aturan bukan berarti semua orang harus memiliki pendapat yang sama.'},
+{t:'Agar warga negara tidak boleh mengkritik pemerintah',e:'Belum tepat.',x:'Menaati aturan tidak berarti dilarang mengkritik pemerintah. Kritik dapat disampaikan sesuai hak dan ketentuan hukum yang berlaku.'}
+]},
+{q:'Manakah contoh perilaku warga negara yang menunjukkan ketaatan terhadap hukum?',o:[
+{t:'Menerobos lampu merah saat jalan sepi',e:'Belum tepat.',x:'Jalan yang sepi tidak menghapus kewajiban menaati lampu lalu lintas. Menerobos lampu merah tetap berbahaya dan melanggar aturan.'},
+{t:'Mematuhi rambu lalu lintas',ok:true,e:'Benar!',x:'Mematuhi rambu lalu lintas merupakan contoh menaati peraturan yang berlaku. Hal ini membantu menjaga keselamatan dan ketertiban pengguna jalan.'},
+{t:'Mengendarai kendaraan tanpa memedulikan aturan',e:'Belum tepat.',x:'Mengabaikan aturan berkendara dapat membahayakan diri sendiri dan orang lain serta berpotensi melanggar hukum.'},
+{t:'Menggunakan fasilitas umum untuk kepentingan pribadi tanpa izin',e:'Belum tepat.',x:'Fasilitas umum harus digunakan sesuai aturan. Memanfaatkannya tanpa izin ketika izin diperlukan bukan contoh ketaatan terhadap hukum.'}
+]},
+{q:'Di sekolah, kamu berteman dengan orang dari suku dan budaya yang berbeda. Sikap yang tepat untuk menjaga persatuan adalah ...',o:[
+{t:'Meminta semua teman mengikuti budaya sendiri',e:'Belum tepat.',x:'Memaksakan satu budaya kepada semua orang tidak menghormati keberagaman dan dapat menimbulkan konflik.'},
+{t:'Menghindari teman yang berbeda budaya',e:'Belum tepat.',x:'Menghindari teman hanya karena perbedaan budaya menghambat pergaulan dan persatuan.'},
+{t:'Mengejek kebiasaan yang tidak dikenal',e:'Belum tepat.',x:'Mengejek budaya orang lain dapat menyakiti perasaan dan merusak hubungan antarteman.'},
+{t:'Menghargai perbedaan suku dan budaya',ok:true,e:'Benar!',x:'Menghargai keberagaman membantu menjaga kerukunan dan persatuan. Ini merupakan contoh penerapan nilai kebangsaan dalam kehidupan sehari-hari, bukan kutipan langsung satu pasal tentang kewajiban menghargai suku.'}
+]},
+{q:'Saat berdiskusi, temanmu memiliki pendapat yang berbeda. Apa yang sebaiknya kamu lakukan?',o:[
+{t:'Memotong pembicaraan agar pendapat sendiri menang',e:'Belum tepat.',x:'Memotong pembicaraan menghambat diskusi dan membuat orang lain tidak mendapat kesempatan menyampaikan pendapat.'},
+{t:'Mengejek pendapat yang berbeda',e:'Belum tepat.',x:'Mengejek pendapat tidak membantu menemukan solusi dan dapat merusak suasana diskusi.'},
+{t:'Mendengarkan dan menghargai pendapatnya',ok:true,e:'Benar!',x:'Mendengarkan dan menghormati pendapat orang lain menunjukkan sikap toleran. Kamu tetap boleh tidak setuju, tetapi sebaiknya menyampaikan alasan dengan sopan.'},
+{t:'Memaksa semua anggota menyetujui pendapat sendiri',e:'Belum tepat.',x:'Memaksakan pendapat mengabaikan kesempatan orang lain untuk berpikir dan berbicara.'}
+]},
+{q:'Seorang siswa sengaja merundung temannya hingga merasa takut dan tertekan. Perilaku ini bertentangan dengan sikap ...',o:[
+{t:'Bersaing secara sehat dalam belajar',e:'Belum tepat.',x:'Persaingan yang sehat dilakukan tanpa merendahkan atau menyakiti orang lain. Perundungan bukan bagian dari persaingan sehat.'},
+{t:'Menghormati hak dan martabat orang lain',ok:true,e:'Benar!',x:'Perundungan merugikan orang lain dan tidak menghormati hak serta martabatnya. Ini merupakan contoh penerapan prinsip menghormati hak asasi manusia dalam kehidupan sehari-hari.'},
+{t:'Menyampaikan kritik dengan sopan',e:'Belum tepat.',x:'Kritik yang baik disampaikan dengan alasan dan cara yang sopan, bukan melalui intimidasi atau perundungan.'},
+{t:'Bekerja sama dalam kegiatan kelompok',e:'Belum tepat.',x:'Kerja sama kelompok membutuhkan rasa saling menghormati. Perundungan justru merusak kerja sama.'}
+]}];
+const quizEl=document.getElementById('quiz');
+let qi=0,qopts=[],qpick=-1,qstate='ask',correct=0;
+function shuf(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+function hideQuiz(){quizEl.hidden=true;qstate='ask';}
+function openQuiz(){sfx('quiz');scene='quiz';qstate='ask';qpick=-1;qopts=shuf(QUIZ[qi].o);renderQuiz();quizEl.hidden=false;}
+function renderQuiz(){
+  const Q=QUIZ[qi],L='ABCD';
+  let h=`<h3>KUIS ${qi+1}</h3><div class='q'>${esc(Q.q)}</div>`;
+  if(qstate==='ask'){
+    qopts.forEach((o,i)=>{h+=`<button data-i='${i}'><b>${L[i]}.</b><span>${esc(o.t)}</span></button>`;});
+  }else{
+    const o=qopts[qpick],right=qopts.find(x=>x.ok);
+    h+=`<div class='res ${o.ok?'ok':'no'}'>${o.e}${o.ok?' +20 poin!':''}</div><div class='ex'>${esc(o.x)}</div>`;
+    if(!o.ok)h+=`<div class='ex'><b>Jawaban yang benar: ${esc(right.t)}</b><br>${esc(right.x)}</div>`;
+    h+=`<button class='go'>${qi+1>=QUIZ.length?'Lihat hasil':'Lanjut main'}</button>`;
+  }
+  quizEl.innerHTML=h;quizEl.scrollTop=0;
+}
+function answer(i){if(qstate!=='ask'||!qopts[i])return;qpick=i;qstate='explain';if(qopts[i].ok){score+=20;correct++;sfx('ok');}else sfx('no');renderQuiz();}
+function nextQuiz(){qi++;hideQuiz();kills=0;enemies=[];ebul=[];bullets=[];p.inv=60;spawnT=40;scene='play';if(qi>=QUIZ.length){won=true;over=true;hi=Math.max(hi,score);sfx('win');}}
+function quizKey(c){
+  if(qstate==='ask'){const m={KeyA:0,KeyB:1,KeyC:2,KeyD:3,Digit1:0,Digit2:1,Digit3:2,Digit4:3}[c];if(m!==undefined)answer(m);}
+  else if(c==='Enter'||c==='Space')nextQuiz();
+}
+quizEl.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.classList.contains('go'))nextQuiz();else answer(+b.dataset.i);});
+
+let AC=null,master=null,musicGain=null,sfxGain=null,muted=false,curTk=null,step=0,nextT=0;
+const mb=document.getElementById('mute');
+function initAudio(){
+  if(AC)return;
+  try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){AC=null;return;}
+  master=AC.createGain();master.gain.value=muted?0:1;master.connect(AC.destination);
+  musicGain=AC.createGain();musicGain.gain.value=.18;musicGain.connect(master);
+  sfxGain=AC.createGain();sfxGain.gain.value=.4;sfxGain.connect(master);
+  nextT=AC.currentTime+.1;
+}
+function tone(f,t,d,type,vol,g,slide){
+  const o=AC.createOscillator(),e=AC.createGain();
+  o.type=type;o.frequency.setValueAtTime(f,t);
+  if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(slide,20),t+d);
+  e.gain.setValueAtTime(vol,t);e.gain.exponentialRampToValueAtTime(.001,t+d);
+  o.connect(e);e.connect(g||sfxGain);o.start(t);o.stop(t+d+.02);
+}
+function noise(t,d,vol,cut,g){
+  const n=Math.floor(AC.sampleRate*d),b=AC.createBuffer(1,n,AC.sampleRate),a=b.getChannelData(0);
+  for(let i=0;i<n;i++)a[i]=Math.random()*2-1;
+  const s=AC.createBufferSource(),e=AC.createGain(),f=AC.createBiquadFilter();
+  s.buffer=b;f.type='lowpass';f.frequency.setValueAtTime(cut,t);f.frequency.exponentialRampToValueAtTime(200,t+d);
+  e.gain.setValueAtTime(vol,t);e.gain.exponentialRampToValueAtTime(.001,t+d);
+  s.connect(f);f.connect(e);e.connect(g||sfxGain);s.start(t);
+}
+function sfx(n){
+  if(!AC)initAudio();
+  if(!AC||muted)return;
+  if(AC.state==='suspended')AC.resume();
+  const t=AC.currentTime;
+  if(n==='shoot')tone(900,t,.09,'square',.1,null,300);
+  else if(n==='boom'){noise(t,.35,.5,3000);tone(130,t,.3,'sawtooth',.25,null,40);}
+  else if(n==='hit'){noise(t,.5,.6,1500);tone(200,t,.45,'sawtooth',.3,null,50);}
+  else if(n==='pick'){tone(660,t,.06,'square',.15);tone(990,t+.06,.08,'square',.15);}
+  else if(n==='start')tone(200,t,.55,'sawtooth',.2,null,1400);
+  else if(n==='ok')[523,659,784,1047].forEach((f,i)=>tone(f,t+i*.09,.18,'square',.18));
+  else if(n==='no'){tone(220,t,.25,'sawtooth',.2,null,110);tone(165,t+.18,.35,'sawtooth',.2,null,80);}
+  else if(n==='quiz'){tone(784,t,.12,'triangle',.25);tone(988,t+.12,.12,'triangle',.25);tone(1319,t+.24,.25,'triangle',.25);}
+  else if(n==='win')[523,659,784,1047,784,1047,1319].forEach((f,i)=>tone(f,t+i*.12,.25,'square',.2));
+  else if(n==='lose')[392,349,311,262].forEach((f,i)=>tone(f,t+i*.2,.3,'sawtooth',.2));
+}
+const NOTE=m=>440*Math.pow(2,(m-69)/12);
+const CH=[{b:45,a:[69,72,76]},{b:41,a:[65,69,72]},{b:36,a:[64,67,72]},{b:43,a:[62,67,71]}];
+const ARP=[0,1,2,1,0,1,2,1],BPM={play:150,calm:80};
+function playStep(tk,s,t,d){
+  const c=CH[Math.floor(s/8)%4],i=s%8;
+  if(tk==='play'){
+    if(i%2===0)tone(NOTE(c.b+(i===4?12:0)),t,d*1.8,'triangle',.6,musicGain);
+    tone(NOTE(c.a[ARP[i]]),t,d*.9,'square',.14,musicGain);
+    if(i%2===1)noise(t,.04,.18,8000,musicGain);
+  }else{
+    if(i===0)tone(NOTE(c.b+12),t,d*7,'sine',.6,musicGain);
+    if(i===0||i===3||i===5)tone(NOTE(c.a[i===0?0:i===3?1:2]+12),t,d*2,'triangle',.3,musicGain);
+  }
+}
+function music(){
+  if(!AC||muted)return;
+  const tk=over?null:scene==='play'?'play':scene==='intro'?null:'calm';
+  if(tk!==curTk){curTk=tk;step=0;nextT=AC.currentTime+.05;}
+  if(!tk)return;
+  if(nextT<AC.currentTime-.5)nextT=AC.currentTime+.05;
+  const d=60/BPM[tk]/2;
+  while(nextT<AC.currentTime+.15){playStep(tk,step,nextT,d);step++;nextT+=d;}
+}
+function toggleMute(){muted=!muted;initAudio();if(master)master.gain.value=muted?0:1;if(AC&&AC.state==='suspended')AC.resume();mb.textContent=muted?'🔇':'🔊';}
+mb.addEventListener('click',toggleMute);
+addEventListener('keydown',e=>{if(e.code==='KeyM'&&!e.repeat)toggleMute();});
+['keydown','pointerdown'].forEach(n=>addEventListener(n,()=>{if(AC&&AC.state==='suspended')AC.resume();}));
+function tp(e){const r=cv.getBoundingClientRect(),t=e.touches?e.touches[0]:e;return{x:(t.clientX-r.left)*W/r.width,y:(t.clientY-r.top)*H/r.height};}
+cv.addEventListener('touchstart',e=>{if(scene==='menu'){menuClick(tp(e));e.preventDefault();return;}if(!mobile)touch=tp(e);if(over)reset();e.preventDefault();},{passive:false});
+cv.addEventListener('touchmove',e=>{if(!mobile)touch=tp(e);e.preventDefault();},{passive:false});
+cv.addEventListener('touchend',()=>touch=null);
+cv.addEventListener('mousedown',e=>{if(scene==='menu')menuClick(tp(e));else if(over)reset();});
+
+let p,bullets,enemies,ebul,parts,stars,score,hi=0,over,t,spawnT,shootT,kills,won;
+stars=[...Array(60)].map(()=>({x:Math.random()*W,y:Math.random()*H,s:.5+Math.random()*2}));
+function reset(){p={x:60,y:H/2,w:18,h:14,lives:3,inv:0};bullets=[];enemies=[];ebul=[];parts=[];score=0;kills=0;qi=0;correct=0;won=false;over=false;t=0;spawnT=0;shootT=0;}
+reset();
+
+function boom(x,y,c){for(let i=0;i<12;i++)parts.push({x,y,vx:(Math.random()-.5)*4,vy:(Math.random()-.5)*4,l:20+Math.random()*10,c});}
+function hit(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
+
+function update(){
+  t++;
+  stars.forEach(s=>{s.x-=s.s;if(s.x<0){s.x=W;s.y=Math.random()*H;}});
+  parts.forEach(q=>{q.x+=q.vx;q.y+=q.vy;q.l--;});parts=parts.filter(q=>q.l>0);
+  if(scene==='intro'){it++;p.x=-30+90*(1-Math.pow(1-Math.min(it/120,1),2));if(it>=250){scene='play';t=0;}return;}
+  if(over||scene!=='play')return;
+  const sp=3;
+  let dx=0,dy=0;
+  if(keys.ArrowLeft||keys.KeyA)dx-=1;if(keys.ArrowRight||keys.KeyD)dx+=1;
+  if(keys.ArrowUp||keys.KeyW)dy-=1;if(keys.ArrowDown||keys.KeyS)dy+=1;
+  p.x+=dx*sp;p.y+=dy*sp;
+  if(touch){p.x+=(touch.x-30-p.x-p.w/2)*.2;p.y+=(touch.y-p.y-p.h/2)*.2;}
+  p.x=Math.max(0,Math.min(W-p.w,p.x));p.y=Math.max(0,Math.min(H-p.h,p.y));
+  if(p.inv>0)p.inv--;
+  shootT--;
+  if((keys.Space||touch)&&shootT<=0){bullets.push({x:p.x+p.w,y:p.y+p.h/2-1.5,w:10,h:3});sfx('shoot');shootT=9;}
+  bullets.forEach(b=>b.x+=7);bullets=bullets.filter(b=>b.x<W);
+  spawnT--;
+  if(spawnT<=0){
+    const hard=Math.min(t/1800,1);
+    enemies.push({x:W+10,y:20+Math.random()*(H-60),w:20,h:16,hp:1,vx:-(1+Math.random()*1.2+hard),ph:Math.random()*6,amp:15+Math.random()*30,y0:0,fire:60+Math.random()*80});
+    enemies[enemies.length-1].y0=enemies[enemies.length-1].y;
+    spawnT=Math.max(18,50-hard*30);
+  }
+  enemies.forEach(e=>{
+    e.x+=e.vx;e.y=e.y0+Math.sin(t*.05+e.ph)*e.amp;e.fire--;
+    if(e.fire<=0&&e.x<W-20&&e.x>p.x+40){
+      const a=Math.atan2(p.y-e.y,p.x-e.x);
+      ebul.push({x:e.x,y:e.y+e.h/2,w:5,h:5,vx:Math.cos(a)*2.2,vy:Math.sin(a)*2.2});
+      e.fire=100+Math.random()*80;
+    }
+  });
+  ebul.forEach(b=>{b.x+=b.vx;b.y+=b.vy;});
+  ebul=ebul.filter(b=>b.x>-10&&b.x<W+10&&b.y>-10&&b.y<H+10);
+  for(const b of bullets)for(const e of enemies)if(!b.dead&&!e.dead&&hit(b,e)){b.dead=e.dead=true;score+=10;kills++;sfx('boom');boom(e.x+e.w/2,e.y+e.h/2,'#ffb347');}
+  bullets=bullets.filter(b=>!b.dead);enemies=enemies.filter(e=>!e.dead&&e.x>-30);
+  if(kills>=5){if(qi<QUIZ.length){openQuiz();return;}won=true;over=true;hi=Math.max(hi,score);}
+  if(p.inv===0){
+    const hb={x:p.x+3,y:p.y+3,w:p.w-6,h:p.h-6};
+    const hurt=enemies.some(e=>hit(hb,e))||ebul.some(b=>hit(hb,b));
+    if(hurt){p.lives--;p.inv=90;sfx('hit');boom(p.x+p.w/2,p.y+p.h/2,'#6cf');ebul=[];
+      enemies=enemies.filter(e=>!hit(hb,e));
+      if(p.lives<=0){over=true;hi=Math.max(hi,score);sfx('lose');}}
+  }
+}
+
+function draw(){
+  ctx.fillStyle='#05050f';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#fff';stars.forEach(s=>{ctx.globalAlpha=.3+s.s/4;ctx.fillRect(s.x,s.y,s.s,s.s);});ctx.globalAlpha=1;
+  if(scene==='menu'){drawMenu();return;}
+  if((!over||won)&&(p.inv===0||Math.floor(p.inv/4)%2===0)){
+    ctx.fillStyle='#4fc3f7';ctx.beginPath();ctx.moveTo(p.x+p.w,p.y+p.h/2);ctx.lineTo(p.x,p.y);ctx.lineTo(p.x+4,p.y+p.h/2);ctx.lineTo(p.x,p.y+p.h);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#ffd54f';ctx.fillRect(p.x-4-(t%4),p.y+p.h/2-1,4,2);
+  }
+  ctx.fillStyle='#ffee58';bullets.forEach(b=>ctx.fillRect(b.x,b.y,b.w,b.h));
+  ctx.fillStyle='#ef5350';enemies.forEach(e=>{ctx.beginPath();ctx.moveTo(e.x,e.y+e.h/2);ctx.lineTo(e.x+e.w,e.y);ctx.lineTo(e.x+e.w-5,e.y+e.h/2);ctx.lineTo(e.x+e.w,e.y+e.h);ctx.closePath();ctx.fill();});
+  ctx.fillStyle='#ff80ab';ebul.forEach(b=>{ctx.beginPath();ctx.arc(b.x,b.y,3,0,7);ctx.fill();});
+  parts.forEach(q=>{ctx.fillStyle=q.c;ctx.globalAlpha=q.l/30;ctx.fillRect(q.x,q.y,3,3);});ctx.globalAlpha=1;
+  ctx.fillStyle='#fff';ctx.font='14px monospace';ctx.textAlign='left';
+  ctx.fillText('SKOR '+score,8,18);ctx.fillText('HI '+hi,8,34);
+  ctx.textAlign='right';ctx.fillText('NYAWA '+'♥'.repeat(Math.max(p.lives,0)),W-8,18);
+  ctx.fillText('TARGET '+kills+'/5',W-8,34);
+  if(scene==='intro'&&it>120){const a=Math.min(1,(it-120)/30);ctx.globalAlpha=a;ctx.textAlign='center';ctx.fillStyle='#ffd54f';ctx.font='bold 28px monospace';ctx.fillText('Hancurkan 5 Target!',W/2,H/2-40);ctx.globalAlpha=1;}
+  if(over){
+    ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='bold 32px monospace';if(won){drawResult();return;}ctx.fillText('GAME OVER',W/2,H/2-10);
+    ctx.font='14px monospace';ctx.fillText('Skor: '+score+'  ·  Tekan Enter / sentuh untuk main lagi',W/2,H/2+20);ctx.fillText('Esc = kembali ke menu',W/2,H/2+42);
+  }
+}
+function drawResult(){
+  const n=QUIZ.length;
+  ctx.fillStyle='rgba(5,5,15,.88)';ctx.fillRect(0,0,W,H);
+  ctx.textAlign='center';
+  ctx.fillStyle='#ffd54f';ctx.font='bold 30px monospace';ctx.fillText('MISI SELESAI!',W/2,70);
+  ctx.fillStyle='#fff';ctx.font='bold 22px monospace';ctx.fillText('Total skor: '+score,W/2,122);
+  ctx.font='16px monospace';ctx.fillText('Jawaban benar: '+correct+' dari '+n,W/2,152);
+  const m=correct===n?'Luar biasa! Kamu warga negara yang taat dan cerdas.':correct>=n*0.6?'Bagus! Terus belajar dan biasakan taat aturan.':'Jangan menyerah! Baca lagi penjelasannya, coba lagi.';
+  ctx.fillStyle='#81c784';ctx.font='13px monospace';ctx.fillText(m,W/2,200);
+  ctx.fillStyle='#e8e8f0';ctx.fillText('Taat aturan, hormati sesama, jaga persatuan.',W/2,224);
+  ctx.fillText('Terima kasih sudah bermain Ayo Taat!',W/2,248);
+  ctx.fillStyle='#9a9ab0';ctx.font='12px monospace';ctx.fillText('Enter / sentuh = main lagi  ·  Esc = menu',W/2,320);
+}
+function start(){sfx('start');hideQuiz();reset();scene='intro';it=0;p.x=-30;}
+function menuKey(c){
+  if(help){if(c==='Enter'||c==='Space'||c==='Escape')help=false;return;}
+  if(c==='ArrowUp'||c==='KeyW'){sel=0;sfx('pick');}
+  if(c==='ArrowDown'||c==='KeyS'){sel=1;sfx('pick');}
+  if(c==='Enter'||c==='Space'){if(sel===0)start();else help=true;}
+}
+function menuClick(pt){
+  if(help){help=false;return;}
+  if(pt.x>=150&&pt.x<=330){
+    if(pt.y>=190&&pt.y<=224){sel=0;start();}
+    else if(pt.y>=234&&pt.y<=268){sel=1;help=true;}
+  }
+}
+function drawMenu(){
+  ctx.textAlign='center';
+  ctx.fillStyle='#4fc3f7';ctx.font='bold 40px monospace';ctx.fillText('AYO TAAT!',W/2,110);
+  ctx.fillStyle='#9a9ab0';ctx.font='13px monospace';ctx.fillText('Belajar Kewajiban Warga Negara',W/2,134);
+  if(help){
+    ctx.fillStyle='#e8e8f0';ctx.font='14px monospace';
+    ['Panah / WASD : bergerak','Spasi : tembak','HP : sentuh & geser layar','Esc : kembali ke menu','Hindari musuh dan peluru!','Jawaban kuis benar = +20 poin'].forEach((l,i)=>ctx.fillText(l,W/2,180+i*24));
+    ctx.fillStyle='#9a9ab0';ctx.font='12px monospace';ctx.fillText('Enter / klik untuk kembali',W/2,320);
+    return;
+  }
+  [['MULAI',190],['CARA MAIN',234]].forEach(([l,y],i)=>{
+    ctx.fillStyle=i===sel?'#4fc3f7':'#23233a';ctx.fillRect(150,y,180,34);
+    ctx.fillStyle=i===sel?'#05050f':'#e8e8f0';ctx.font='bold 16px monospace';ctx.fillText(l,W/2,y+22);
+  });
+  ctx.fillStyle='#9a9ab0';ctx.font='12px monospace';
+  ctx.fillText('Skor tertinggi: '+hi,W/2,300);
+  ctx.fillText('↑↓ pilih · Enter / klik / sentuh',W/2,320);
+}
+(function loop(){update();draw();music();requestAnimationFrame(loop);})();
+</script>
+</body>
+</html>
